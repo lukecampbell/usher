@@ -17,7 +17,7 @@ class UsherServer:
         '''
         with self.gevent_lock: # Assuming it acquires, need to check
             if namespace in self.table and not self.is_expired(namespace):
-                return -1
+                return 0
             else:
                 self.lease(namespace, expiration)
                 return expiration
@@ -52,9 +52,15 @@ class UsherServer:
         '''
         Removes a lease from the lease table
         '''
-        self.table[namespace] = None
-        del self.table[namespace]
-
+        with self.gevent_lock:
+            if namespace in self.table:
+                self.table[namespace] = None
+                del self.table[namespace]
+                return 1
+            else:
+                return 2
+        return 0
+            
     def is_leased(self, namespace):
         '''
         Determines if a namespace is leased
