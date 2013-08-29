@@ -2,7 +2,6 @@ from test.testcase import UsherTestCase, attr
 from usher.tcp_server import UsherTCPServer
 from usher.tcp_client import UsherTCPClient
 from usher.log import INFO, enable_console_logging, log
-from subprocess import Popen
 
 import gevent
 
@@ -27,8 +26,7 @@ def mp_server(host, port):
     server.serve_forever()
 
 
-@attr('unit')
-class TestTCPServer(UsherTestCase):
+class ServerTestCase(UsherTestCase):
     def setUp(self):
         self.host = '127.0.0.1'
         self.port = 30128
@@ -40,6 +38,9 @@ class TestTCPServer(UsherTestCase):
     def tearDown(self):
         self.server.terminate()
 
+
+@attr('unit')
+class TestTCPServer(ServerTestCase):
     def test_basic_client(self):
         cli = UsherTCPClient(self.host, self.port)
         lease = cli.acquire_lease('/ex1', 30)
@@ -96,6 +97,4 @@ class TestTCPServer(UsherTestCase):
         for i in xrange(5):
             r = q.get()
             total += r
-
-
 
