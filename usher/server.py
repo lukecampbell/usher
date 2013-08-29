@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 
+from usher.dotdict import DotDict
+
 import gevent
 import gevent.coros
 import time
 
+
 class UsherServer:
     LEASE_EXT = 60 # A constant buffer size in seconds
 
-    def __init__(self):
+    def __init__(self, config=None):
+        if config is None:
+            self.config = DotDict()
+        else:
+            self.config = DotDict(config)
         self.table = {}
         self.gevent_lock = gevent.coros.RLock()
     

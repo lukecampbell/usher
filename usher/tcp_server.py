@@ -5,6 +5,7 @@ gevent.monkey.patch_all()
 
 from gevent.server import StreamServer
 from usher.server import UsherServer
+from usher.log import log
 
 from struct import pack, unpack
 
@@ -89,17 +90,23 @@ class UsherTCPServer(StreamServer):
         StreamServer.__init__(self, *args, **kwargs)
 
     def handle(self, socket, addr):
+        log.info('%s - Accepted', (addr,))
         parser = MessageParser(socket)
         mtype = parser.parse()
         if mtype == MessageParser.NOP_MESSAGE:
+            log.debug('%s - NOP', (addr,))
             return
         elif mtype == MessageParser.ACQUIRE_MESSAGE:
+            log.debug('%s - Acquire', (addr,))
             namespace, expiration = parser.parse_acquire()
+            log.debug('%s - (%s/%s) Requested', (addr,), namespace, expiration)
             status = self.server.acquire_lease(namespace, expiration)
+            log.debug('%s - status: %s', (addr,), status)
             outgoing = pack('<h', status)
             socket.send(outgoing)
             return
         elif mtype == MessageParser.RELEASE_MESSAGE:
+            log.debug('%s - Release', (addr,))
             namespace = parser.parse_release()
             status = self.server.free_lease(namespace)
             outgoing = pack('<h', status)
