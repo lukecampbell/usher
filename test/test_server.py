@@ -15,7 +15,7 @@ class TestServer(UsherTestCase):
         self.assertEquals(lease, 5)
 
         lease = self.server.acquire_lease('/ex1', 5)
-        self.assertEquals(lease, -1)
+        self.assertEquals(lease, 0)
 
         self.assertTrue(self.server.is_leased('/ex1'))
         self.assertFalse(self.server.is_leased('/ex2'))
@@ -28,7 +28,7 @@ class TestServer(UsherTestCase):
 
         lease = self.server.acquire_lease('/ex1', 1)
         self.assertEquals(lease, 1)
-        self.assertEquals(self.server.acquire_lease('/ex1', 10), -1)
+        self.assertEquals(self.server.acquire_lease('/ex1', 10), 0)
         gevent.sleep(1)
 
         lease = self.server.acquire_lease('/ex1', 1)

@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+
+import gevent.monkey
+gevent.monkey.patch_all()
+
 from gevent.server import StreamServer
 from usher.server import UsherServer
 
@@ -85,24 +89,18 @@ class UsherTCPServer(StreamServer):
         StreamServer.__init__(self, *args, **kwargs)
 
     def handle(self, socket, addr):
-        print 'Accepted connection from: ', addr
         parser = MessageParser(socket)
         mtype = parser.parse()
         if mtype == MessageParser.NOP_MESSAGE:
-            print 'NOP'
             return
         elif mtype == MessageParser.ACQUIRE_MESSAGE:
-            print 'Acquire'
             namespace, expiration = parser.parse_acquire()
-            print '%s/%s' % (namespace,expiration)
             status = self.server.acquire_lease(namespace, expiration)
             outgoing = pack('<h', status)
             socket.send(outgoing)
             return
         elif mtype == MessageParser.RELEASE_MESSAGE:
             namespace = parser.parse_release()
-            print 'Release'
-            print namespace
             status = self.server.free_lease(namespace)
             outgoing = pack('<h', status)
             socket.send(outgoing)

@@ -1,7 +1,8 @@
-import socket
-from struct import pack, unpack
-
+#!/usr/bin/env python
 from usher.tcp_server import MessageParser
+
+from struct import pack, unpack
+import socket
 
 class UsherSocket(socket.socket):
     def __init__(self, host, port):
