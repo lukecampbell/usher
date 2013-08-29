@@ -108,7 +108,9 @@ class UsherTCPServer(StreamServer):
         elif mtype == MessageParser.RELEASE_MESSAGE:
             log.debug('%s - Release', (addr,))
             namespace = parser.parse_release()
+            log.debug('%s - (%s) Release', (addr,), namespace)
             status = self.server.free_lease(namespace)
+            log.debug('%s - status: %s', (addr,), status)
             outgoing = pack('<h', status)
             socket.send(outgoing)
             return

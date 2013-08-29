@@ -1,7 +1,7 @@
 from test.testcase import UsherTestCase, attr
 from usher.tcp_server import UsherTCPServer
 from usher.tcp_client import UsherTCPClient
-from usher.log import INFO, enable_console_logging
+from usher.log import INFO, enable_console_logging, log
 from subprocess import Popen
 
 import gevent
@@ -20,25 +20,25 @@ def mp_get_lock(host, port):
 
 
 def mp_server(host, port):
+    enable_console_logging(INFO)
     server = UsherTCPServer((host, port))
+    server.server.LEASE_EXT = 0
+    log.info('Serving on %s:%s', host, port)
     server.serve_forever()
 
 
 @attr('unit')
 class TestTCPServer(UsherTestCase):
     def setUp(self):
-        enable_console_logging(INFO)
-        
-
         self.host = '127.0.0.1'
         self.port = 30128
 
-        self.server = UsherTCPServer((self.host,self.port))
-        self.server.server.LEASE_EXT = 0
+        self.server = mp.Process(target=mp_server, args=(self.host, self.port))
         self.server.start()
+        gevent.sleep(0.5)
     
     def tearDown(self):
-        self.server.stop()
+        self.server.terminate()
 
     def test_basic_client(self):
         cli = UsherTCPClient(self.host, self.port)
@@ -71,10 +71,6 @@ class TestTCPServer(UsherTestCase):
 
     def test_multiprocess_access(self):
         global q
-        self.server.stop()
-        self.port += 1 # Deal with the TCP_WAIT thing
-        server = mp.Process(target=mp_server, args=(self.host, self.port))
-        server.start()
         pool = [mp.Process(target=mp_get_lock, args=(self.host, self.port)) for i in xrange(5)]
         for p in pool:
             p.start()
@@ -101,6 +97,5 @@ class TestTCPServer(UsherTestCase):
             r = q.get()
             total += r
 
-        server.terminate()
 
 
