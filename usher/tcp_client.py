@@ -54,7 +54,7 @@ class UsherTCPClient:
         '''
         with UsherSocket(self.host, self.port) as s, gevent.timeout.Timeout(self.timeout):
             mp = MessageParser(s)
-            mp.send_release_lease(namespace, key)
+            mp.send_release(namespace, key)
             status = mp.read_release_response()
         return status
     
@@ -92,6 +92,15 @@ class UsherLock:
     '''
 
     def __init__(self, cli, name, blocking=True, timeout=10, acquisition_timeout=10, raise_timeout=True):
+        '''
+        Initialize an UsherLock
+        cli                 - The UsherTCPClient
+        name                - The namespace for this lock
+        blocking            - Should the lock block while acquiring the lock or fail immediately
+        timeout             - How long to acquire the lock for
+        acquisition_timeout - How long to wait on the server
+        raise_timeout       - Should a timeout be raised
+        '''
         self.cli = cli
         self.name = name
         self.blocking = blocking
@@ -101,22 +110,19 @@ class UsherLock:
         self.gevent_timeout = gevent.timeout.Timeout(self.timeout)
         self.key = None
 
-    def acquire(self, blocking=True, timeout=10, lease_time=60):
+    def acquire(self):
         '''
         Acquire the lock
-        blocking - Whether or not the call should block
-        timeout  - time in seconds it should wait before timing out
-        returns True on sucess and False on Failre
         raises Timeout 
         '''
-        expiration = self.cli.acquire_lease(self.name, lease_time)
+        expiration, self.key = self.cli.acquire_lease(self.name, self.timeout)
         if expiration != 0:
             return True
-        if blocking:
+        if self.blocking:
             done = gevent.event.Event()
-            with gevent.timeout.Timeout(timeout):
+            with gevent.timeout.Timeout(self.acquisition_timeout):
                 while not done.wait(1):
-                    expiration, self.key = self.cli.acquire_lease(self.name, lease_time)
+                    expiration, self.key = self.cli.acquire_lease(self.name, self.timeout)
                     if expiration != 0:
                         done.set()
                 return True
@@ -130,7 +136,8 @@ class UsherLock:
 
 
     def __enter__(self):
-        self.acquire(blocking=self.blocking, timeout=self.acquisition_timeout, lease_time=self.timeout)
+        if not self.acquire():
+            raise RuntimeError("Couldn't acquire the lock")
         if self.raise_timeout:
             self.gevent_timeout.start()
         return self
