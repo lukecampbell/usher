@@ -16,6 +16,11 @@ setup(name = 'usher',
         install_requires=[
             'gevent==0.13.8',
             'PyYAML==3.10'
-            ]
+            ],
+        entry_points = {
+            'console_scripts': [
+                'usher-server = usher.app:usher_server'
+                ]
+            }
         )
 
