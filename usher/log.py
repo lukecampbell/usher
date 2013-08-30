@@ -1,8 +1,7 @@
 import logging
 log = logging.getLogger('usher')
 
-from logging import DEBUG,INFO,WARNING,ERROR,CRITICAL
-
+from logging import DEBUG,INFO,WARNING,ERROR,CRITICAL,NOTSET
 def clear_console_logging():
     log.handlers = filter(lambda x : not isinstance(x, logging.StreamHandler), log.handlers)
 

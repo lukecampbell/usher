@@ -1,7 +1,7 @@
 from test.testcase import UsherTestCase, attr
 from usher.tcp_server import UsherTCPServer
 from usher.tcp_client import UsherTCPClient
-from usher.log import INFO, enable_console_logging, log
+from usher.log import ERROR, enable_console_logging, log
 
 import gevent
 
@@ -13,13 +13,13 @@ import sys
 q = mp.Queue()
 def mp_get_lock(host, port):
     cli = UsherTCPClient(host, port)
-    retval = cli.acquire_lease('/mp', 5)
+    retval, key = cli.acquire_lease('/mp', 5)
     q.put(retval)
     sys.exit(0)
 
 
 def mp_server(host, port):
-    enable_console_logging(INFO)
+    enable_console_logging(ERROR)
     server = UsherTCPServer((host, port))
     server.server.LEASE_EXT = 0
     log.info('Serving on %s:%s', host, port)
@@ -43,23 +43,24 @@ class ServerTestCase(UsherTestCase):
 class TestTCPServer(ServerTestCase):
     def test_basic_client(self):
         cli = UsherTCPClient(self.host, self.port)
-        lease = cli.acquire_lease('/ex1', 30)
+        lease, key = cli.acquire_lease('/ex1', 30)
         self.assertEquals(lease, 30)
-        error = cli.acquire_lease('/ex1', 90)
+        error, key = cli.acquire_lease('/ex1', 90)
         self.assertEquals(error, 0)
-        lease = cli.acquire_lease('/ex2', 2)
+        self.assertIsNone(key)
+        lease, key = cli.acquire_lease('/ex2', 2)
         self.assertEquals(lease, 2)
-        error = cli.acquire_lease('/ex2', 1)
+        error, key = cli.acquire_lease('/ex2', 1)
         self.assertEquals(error, 0)
         gevent.sleep(2)
-        lease = cli.acquire_lease('/ex2', 30)
+        lease, key = cli.acquire_lease('/ex2', 30)
         self.assertEquals(lease, 30)
 
     def test_concurrent_access(self):
         answer_bin = gevent.queue.Queue()
         def get_lock():
             cli = UsherTCPClient(self.host, self.port)
-            retval = cli.acquire_lease('/concurrent', 5)
+            retval, key = cli.acquire_lease('/concurrent', 5)
             answer_bin.put(retval)
 
         gpool = gevent.pool.Group()

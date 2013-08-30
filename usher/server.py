@@ -5,6 +5,7 @@ from usher.dotdict import DotDict
 import gevent
 import gevent.coros
 import time
+import uuid
 
 
 class UsherServer:
@@ -21,13 +22,14 @@ class UsherServer:
     def acquire_lease(self, namespace, expiration=60):
         '''
         Acquires a lease on a namespace
+        returns the allowed expiration and a unique key to use when releasing the lock
         '''
         with self.gevent_lock: # Assuming it acquires, need to check
             if namespace in self.table and not self.is_expired(namespace):
-                return 0
+                return 0, None
             else:
-                self.lease(namespace, expiration)
-                return expiration
+                expiration, key = self.lease(namespace, expiration)
+                return expiration, key
     
     def is_expired(self, namespace):
         '''
@@ -35,7 +37,7 @@ class UsherServer:
         If the current system time is greater than the lease expiration then the 
         function returns true
         '''
-        lease_value = self.table[namespace]
+        key, lease_value = self.table[namespace]
         current_time = time.time()
         if current_time > lease_value:
             return True
@@ -50,23 +52,33 @@ class UsherServer:
             extension = self.LEASE_EXT
 
         current_time = time.time()
-        expiration = current_time + expiration
+        t_expiration = current_time + expiration
+        key = uuid.uuid4().get_bytes()
 
-        self.table[namespace] = expiration + extension
-        return expiration # Clients shouldn't be aware of the extension
+        self.table[namespace] = (key, t_expiration + extension)
+        return expiration, key # Clients shouldn't be aware of the extension
 
-    def free_lease(self, namespace):
+    def free_lease(self, namespace, key):
         '''
         Removes a lease from the lease table
+        returns 0 on failure
+        returns 1 on success
+        returns 2 if the lock doesn't exist (or expired)
+        returns 3 on key-mismatch (permission denied)
+
         '''
         with self.gevent_lock:
             if namespace in self.table:
-                self.table[namespace] = None
-                del self.table[namespace]
-                return 1
+                table_key, expiration = self.table[namespace]
+                if key == table_key: # If the key matches then we're good
+                    self.table[namespace] = None
+                    del self.table[namespace]
+                    return 1 # Lock released
+                else:
+                    return 3 # Wrong credentials
             else:
-                return 2
-        return 0
+                return 2 # No key
+        return 0 # something really bad happened
             
     def is_leased(self, namespace):
         '''

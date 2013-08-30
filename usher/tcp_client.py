@@ -6,6 +6,7 @@ import socket
 
 import gevent.event
 import gevent
+import time
 
 class UsherSocket(socket.socket):
     '''
@@ -34,38 +35,48 @@ class UsherTCPClient:
         # Make sure the server is alive
         self.nop()
 
+
     def acquire_lease(self, namespace, expiration=60):
         '''
         Acquire a lease
         returns the expiration time or 0 on failure
         '''
-        message = pack('<BBH', MessageParser.ACQUIRE_MESSAGE, expiration, len(namespace))
-        message += namespace
         with UsherSocket(self.host, self.port) as s, gevent.timeout.Timeout(self.timeout):
-            s.send(message)
-            retval = s.recv(1)
-            retval = unpack('<B', retval)[0]
-        return retval
+            mp = MessageParser(s)
+            mp.send_acquire(namespace, expiration)
+            status, key = mp.read_acquire_response()
+        return status, key
 
-    def release_lease(self, namespace):
+    def release_lease(self, namespace, key):
         '''
         Release a lease
         returns 0 on success
         '''
-        message = pack('<BH', MessageParser.RELEASE_MESSAGE, len(namespace))
-        message += namespace
         with UsherSocket(self.host, self.port) as s, gevent.timeout.Timeout(self.timeout):
-            s.send(message)
-            retval = s.recv(1)
-            retval = unpack('<B', retval)[0]
-        return retval
+            mp = MessageParser(s)
+            mp.send_release_lease(namespace, key)
+            status = mp.read_release_response()
+        return status
     
     def nop(self):
-        message = pack('<B', MessageParser.NOP_MESSAGE)
+        '''
+        Send a NOP message
+        returns 0 on reply
+        '''
         with UsherSocket(self.host, self.port) as s, gevent.timeout.Timeout(self.timeout):
-            s.send(message)
-            retval = s.recv(1)
-        return retval
+            mp = MessageParser(s)
+            mp.send_nop()
+            status = mp.read_nop_response()
+        return status
+
+    def rtt(self):
+        '''
+        Determines round trip time (RTT) using a NOP
+        '''
+        then = time.time()
+        self.nop()
+        now = time.time()
+        return now - then
 
 
 class UsherLock:
@@ -88,6 +99,7 @@ class UsherLock:
         self.acquisition_timeout = acquisition_timeout
         self.raise_timeout = raise_timeout
         self.gevent_timeout = gevent.timeout.Timeout(self.timeout)
+        self.key = None
 
     def acquire(self, blocking=True, timeout=10, lease_time=60):
         '''
@@ -104,16 +116,17 @@ class UsherLock:
             done = gevent.event.Event()
             with gevent.timeout.Timeout(timeout):
                 while not done.wait(1):
-                    expiration = self.cli.acquire_lease(self.name, lease_time)
+                    expiration, self.key = self.cli.acquire_lease(self.name, lease_time)
                     if expiration != 0:
                         done.set()
                 return True
         return False
 
     def release(self):
-        r = self.cli.release_lease(self.name)
-        if r == 0:
-            raise RuntimeError("Couldn't release the lock")
+        if self.key:
+            r = self.cli.release_lease(self.name, self.key)
+            if r == 0:
+                raise RuntimeError("Couldn't release the lock")
 
 
     def __enter__(self):
