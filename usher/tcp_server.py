@@ -95,6 +95,7 @@ class UsherTCPServer(StreamServer):
         mtype = parser.parse()
         if mtype == MessageParser.NOP_MESSAGE:
             log.debug('%s - NOP', (addr,))
+            socket.send('\x00') # Reply with NULL
             return
         elif mtype == MessageParser.ACQUIRE_MESSAGE:
             log.debug('%s - Acquire', (addr,))
