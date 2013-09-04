@@ -27,23 +27,29 @@ class UsherTCPClient:
     '''
     The usher TCP Client
     '''
-    def __init__(self, host, port, timeout=10):
+    def __init__(self, host, port, timeout=10, server_blocking=False, server_timeout=0):
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.server_blocking=server_blocking
+        self.server_timeout = server_timeout
 
         # Make sure the server is alive
         self.nop()
 
 
-    def acquire_lease(self, namespace, expiration=60):
+    def acquire_lease(self, namespace, expiration=60, server_timeout=0):
         '''
         Acquire a lease
         returns the expiration time or 0 on failure
         '''
+        server_timeout = server_timeout or self.server_timeout
         with UsherSocket(self.host, self.port) as s, gevent.timeout.Timeout(self.timeout):
             mp = MessageParser(s)
-            mp.send_acquire(namespace, expiration)
+            if self.server_blocking:
+                mp.send_acquire(namespace, expiration, self.server_timeout)
+            else:
+                mp.send_acquire(namespace, expiration, 0)
             status, key = mp.read_acquire_response()
         return status, key
 

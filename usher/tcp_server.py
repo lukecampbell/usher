@@ -77,17 +77,18 @@ class MessageParser:
         request = self.read_uint(1)
         return request
 
-    def send_acquire(self, namespace, expiration):
-        message = pack('<BBH', MessageParser.ACQUIRE_MESSAGE, expiration, len(namespace))
+    def send_acquire(self, namespace, expiration, timeout):
+        message = pack('<BBBH', MessageParser.ACQUIRE_MESSAGE, expiration, timeout, len(namespace))
         message += namespace
         return self.send(message)
     
     def read_acquire(self):
         expiration = self.read_uint(1)
+        timeout = self.read_uint(1)
         strlen = self.read_uint(2)
         namespace = self.read(strlen)
 
-        return (namespace, expiration)
+        return (namespace, expiration, timeout)
 
     def send_acquire_response(self, status, key):
         message = pack('<B', status)
@@ -147,9 +148,9 @@ class UsherTCPServer(StreamServer):
             return
         elif mtype == MessageParser.ACQUIRE_MESSAGE:
             log.debug('%s - Acquire', (addr,))
-            namespace, expiration = mp.read_acquire()
+            namespace, expiration, timeout = mp.read_acquire()
             log.debug('%s - (%s/%s) Requested', addr, namespace, expiration)
-            status, key = self.server.acquire_lease(namespace, expiration)
+            status, key = self.server.acquire_lease(namespace, expiration, timeout)
             if log.isEnabledFor(DEBUG):
                 if key:
                     h = ''.join([hex(ord(i)).replace('0x','') for i in key])

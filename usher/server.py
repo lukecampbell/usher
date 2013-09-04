@@ -8,6 +8,91 @@ import time
 import uuid
 
 
+class NamespaceSemaphore:
+    '''
+    A utility to manage timed semaphores with namespaces
+    '''
+    def __init__(self):
+        self.table = {}
+        self.lock = gevent.coros.RLock()
+
+
+    def acquire(self, namespace, expiration, timeout):
+        '''
+        Attempts to acquire a lock/semaphore with the given namespace
+        the attempt will wait <timeout> seconds.
+        namespace  - The namespace of the semaphore
+        expiration - how long before the semaphore should automatically be 
+                     released
+        timeout    - How many seconds the acquisition should block for attempting
+        returns uuid key of acquisition OR None if acquisition failed
+        '''
+
+
+        with self.lock:
+            if namespace in self.table:
+                semaphore = self.table[namespace]
+            else:
+                semaphore = self.table[namespace] = gevent.coros.Semaphore()
+                semaphore.acquire()
+                semaphore.name = namespace
+                semaphore.key = uuid.uuid4().bytes
+                semaphore.rawlink(self.free)
+                gevent.spawn(self.timed_release, namespace, expiration)
+                return semaphore.key
+        if semaphore.acquire(timeout=timeout):
+            gevent.spawn(self.timed_release, namespace, expiration)
+            return semaphore.key
+        return None
+
+    def is_acquired(self, namespace):
+        '''
+        Determines if a semaphore exists and is acquired
+        '''
+        with self.lock:
+            if namespace in self.table:
+                return True
+        return False
+            
+
+    def timed_release(self, namespace, expiration):
+        '''
+        The greenlet execution that waits <expiration> seconds before releasing
+        the semaphore.  
+        '''
+
+        gevent.sleep(expiration)
+        self.release(namespace)
+
+    def free(self, semaphore):
+        '''
+        Frees the table entry
+        '''
+
+        namespace = semaphore.name
+        with self.lock:
+            if namespace in self.table:
+                del self.table[namespace]
+
+    def release(self, namespace, key=None):
+        '''
+        Releases the semaphore
+        Returns False only if a provided key doesn't match
+        '''
+        with self.lock:
+            if namespace in self.table:
+                semaphore = self.table[namespace]
+                if key is not None:
+                    if key == semaphore.key:
+                        semaphore.release()
+                        return True
+                    else:
+                        return False
+                semaphore.release()
+                return True
+        return True 
+
+
 class UsherServer:
     LEASE_EXT = 60 # A constant buffer size in seconds
 
@@ -16,78 +101,37 @@ class UsherServer:
             self.config = DotDict()
         else:
             self.config = DotDict(config)
-        self.table = {}
-        self.gevent_lock = gevent.coros.RLock()
+        self.ns = NamespaceSemaphore()
     
-    def acquire_lease(self, namespace, expiration=60):
+    def acquire_lease(self, namespace, expiration=60, timeout=0):
         '''
         Acquires a lease on a namespace
         returns the allowed expiration and a unique key to use when releasing the lock
         '''
-        with self.gevent_lock: # Assuming it acquires, need to check
-            if namespace in self.table and not self.is_expired(namespace):
-                return 0, None
-            else:
-                expiration, key = self.lease(namespace, expiration)
-                return expiration, key
+        expiration = min(expiration, 60)
+        timeout = min(timeout, 120) # At most tie up for 120 seconds
+        key = self.ns.acquire(namespace, expiration + self.LEASE_EXT, timeout)
+        if key is None:
+            print 'empty'
+            return 0, None
+        else:
+            return expiration, key
     
-    def is_expired(self, namespace):
+    def is_leased(self, namespace):
         '''
         Compares the timestamp in the lease table with the current system time
         If the current system time is greater than the lease expiration then the 
         function returns true
         '''
-        key, lease_value = self.table[namespace]
-        current_time = time.time()
-        if current_time > lease_value:
-            return True
-        return False
+        return self.ns.is_acquired(namespace)
 
-    def lease(self, namespace, expiration, extension=None):
-        '''
-        Assigns an expiration timestamp to a namespace in the lease table
-        Automatically applies the lease extension
-        '''
-        if extension is None:
-            extension = self.LEASE_EXT
-
-        current_time = time.time()
-        t_expiration = current_time + expiration
-        key = uuid.uuid4().get_bytes()
-
-        self.table[namespace] = (key, t_expiration + extension)
-        return expiration, key # Clients shouldn't be aware of the extension
 
     def free_lease(self, namespace, key):
         '''
         Removes a lease from the lease table
-        returns 0 on failure
-        returns 1 on success
-        returns 2 if the lock doesn't exist (or expired)
-        returns 3 on key-mismatch (permission denied)
-
         '''
-        with self.gevent_lock:
-            if namespace in self.table:
-                table_key, expiration = self.table[namespace]
-                if key == table_key: # If the key matches then we're good
-                    self.table[namespace] = None
-                    del self.table[namespace]
-                    return 1 # Lock released
-                else:
-                    return 3 # Wrong credentials
-            else:
-                return 2 # No key
-        return 0 # something really bad happened
+        return self.ns.release(namespace, key)
             
-    def is_leased(self, namespace):
-        '''
-        Determines if a namespace is leased
-        '''
-        with self.gevent_lock:
-            if namespace in self.table and not self.is_expired(namespace):
-                return True
-            return False
 
 
 

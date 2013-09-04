@@ -9,6 +9,7 @@ import gevent.queue
 import gevent.pool
 import multiprocessing as mp
 import sys
+import socket
 
 q = mp.Queue()
 def mp_get_lock(host, port):
@@ -37,6 +38,44 @@ class ServerTestCase(UsherTestCase):
     
     def tearDown(self):
         self.server.terminate()
+
+@attr('unit')
+class TestTCP(UsherTestCase):
+    host = 'localhost'
+    port = 50007
+    @classmethod
+    def start_server(cls):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((cls.host, cls.port))
+        s.listen(1)
+        conn, addr = s.accept()
+        print 'Connected by', addr
+        conn.send('\x00')
+        gevent.sleep(5)
+        conn.send('\x01')
+        conn.close()
+        s.close()
+
+    def timeout_read(self, socket, timeout, bytes):
+        with gevent.timeout.Timeout(timeout):
+            return socket.recv(bytes)
+
+    def test_tcp_block(self):
+
+        process = mp.Process(target=TestTCP.start_server)
+        process.start()
+        self.addCleanup(process.terminate)
+        gevent.sleep(1)
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((self.host, self.port))
+        bs = s.recv(1)
+        assert bs=='\x00'
+        with self.assertRaises(gevent.timeout.Timeout):
+            self.timeout_read(s, 1, 1)
+
+
+
 
 
 @attr('unit')
