@@ -29,8 +29,8 @@ class TestFileWriting(ServerTestCase):
 
     @staticmethod
     def mp_file_write(path, host, port):
-        usher = UsherTCPClient(host, port)
-        lock = UsherLock(usher, '/flock')
+        usher = UsherTCPClient(host, port, server_blocking=True, server_timeout=60)
+        lock = UsherLock(usher, '/flock', blocking=False, timeout=60)
         done = False
         while not done:
             with lock:

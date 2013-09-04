@@ -2,7 +2,7 @@
 '''
 This is where the application code will live
 '''
-from usher.tcp_server import UsherTCPServer
+from usher.tcp_server import UsherTCPServer, UsherServer
 from usher.log import enable_console_logging, log, DEBUG,INFO,WARNING,ERROR,CRITICAL
 
 import sys
@@ -19,10 +19,12 @@ def usher_server():
     parser.add_argument("-l", "--log-level", help="set the log level")
     parser.add_argument("-i", "--interface", help="the ip-address or host of the interface to listen on")
     parser.add_argument("-p", "--port", type=int, help="port to listen on")
+    parser.add_argument("-x", "--extension", type=int, help="Seconds to extend timeouts")
     args = parser.parse_args()
 
     host = '127.0.0.1' # Run on localhost by default
     port = 50582
+    extension = UsherServer.LEASE_EXT
 
     if args.log_level:
         level = args.log_level
@@ -46,11 +48,13 @@ def usher_server():
             host = ifc
     if args.port:
         port = args.port
-
+    if args.extension is not None:
+        extension = args.extension
     gevent.signal(signal.SIGINT, sigint)
     gevent.signal(signal.SIGTERM, sigint)
     log.info("Server Listening on %s:%s", host, port)
     server = UsherTCPServer((host,port))
+    server.server.LEASE_EXT = extension
     server.start()
     while True:
         gevent.sleep(100)

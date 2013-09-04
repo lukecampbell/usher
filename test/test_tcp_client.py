@@ -60,5 +60,15 @@ class TestTCPClient(ServerTestCase):
             with lock2:
                 self.assertTrue(False)
 
+    def test_server_blocking(self):
+        cli = UsherTCPClient(self.host, self.port, server_blocking=True, server_timeout=5)
+        lock = UsherLock(cli, '/ex1', blocking=False, timeout=2)
+        lock2 = UsherLock(cli, '/ex1', blocking=False, timeout=1)
+
+        self.assertTrue(lock.acquire())
+
+        now = time.time()
+        self.assertTrue(lock2.acquire())
+        self.assertTrue((time.time() - now) > 1)
 
 

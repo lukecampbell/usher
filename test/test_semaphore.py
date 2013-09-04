@@ -3,6 +3,8 @@
 from test.testcase import UsherTestCase, attr
 from usher.server import NamespaceSemaphore
 import gevent
+import gevent.queue
+import gevent.pool
 
 @attr('unit')
 class TestSemaphore(UsherTestCase):
@@ -36,5 +38,26 @@ class TestSemaphore(UsherTestCase):
         gevent.sleep(2.2)
         self.assertIsNotNone(ns.acquire('/ex1', 1, 0))
 
-        
+    def acquire(self, ns):
+        key = ns.acquire('/ex', 5, 5)
+        if key is not None:
+            self.q.put(True)
+
+    def test_contest(self):
+        ns = NamespaceSemaphore()
+        ns.acquire('/ex', 3, 0)
+        self.q = gevent.queue.Queue()
+        pool = gevent.pool.Pool(size=5)
+        for i in xrange(5):
+            pool.spawn(self.acquire, ns)
+
+        pool.join()
+        self.assertEquals(self.q.qsize(), 1)
+        self.q.get()
+        for i in xrange(5):
+            pool.spawn(self.acquire, ns)
+        pool.join()
+        self.assertEquals(self.q.qsize(), 1)
+
+
 

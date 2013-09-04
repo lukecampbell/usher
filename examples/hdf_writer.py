@@ -24,8 +24,8 @@ def increment_file(path):
         return v+1
 
 def main(host, port, path):
-    cli = UsherTCPClient(host, port)
-    lock = UsherLock(cli, '/hdf-example', acquisition_timeout=60)
+    cli = UsherTCPClient(host, port, timeout=70, server_blocking=True, server_timeout=60)
+    lock = UsherLock(cli, '/hdf-example', blocking=False, timeout=2)
 
     while True:
         with lock:

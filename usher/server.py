@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from usher.log import log, DEBUG
 from usher.dotdict import DotDict
 
 import gevent
@@ -37,11 +38,14 @@ class NamespaceSemaphore:
                 semaphore.acquire()
                 semaphore.name = namespace
                 semaphore.key = uuid.uuid4().bytes
-                semaphore.rawlink(self.free)
-                gevent.spawn(self.timed_release, namespace, expiration)
+                #semaphore.rawlink(self.free)
+                semaphore.greenlet = gevent.spawn(self.timed_release, 
+                        namespace, expiration, semaphore.key)
                 return semaphore.key
         if semaphore.acquire(timeout=timeout):
-            gevent.spawn(self.timed_release, namespace, expiration)
+            semaphore.greenlet.kill()
+            semaphore.key = uuid.uuid4().bytes
+            semaphore.greenlet = gevent.spawn(self.timed_release, namespace, expiration, semaphore.key)
             return semaphore.key
         return None
 
@@ -55,24 +59,19 @@ class NamespaceSemaphore:
         return False
             
 
-    def timed_release(self, namespace, expiration):
+    def timed_release(self, namespace, expiration, key):
         '''
         The greenlet execution that waits <expiration> seconds before releasing
         the semaphore.  
         '''
 
+        log.debug('Waiting %s seconds', expiration)
         gevent.sleep(expiration)
-        self.release(namespace)
+        log.debug('Time expired')
+        self.release(namespace, key)
 
     def free(self, semaphore):
-        '''
-        Frees the table entry
-        '''
-
-        namespace = semaphore.name
-        with self.lock:
-            if namespace in self.table:
-                del self.table[namespace]
+        pass
 
     def release(self, namespace, key=None):
         '''
@@ -85,8 +84,13 @@ class NamespaceSemaphore:
                 if key is not None:
                     if key == semaphore.key:
                         semaphore.release()
+                        log.debug('Key matched, releasing')
                         return True
                     else:
+                        log.debug('Wrong key, not releasing')
+                        if log.isEnabledFor(DEBUG):
+                            log.debug('Semaphore key: %s', ''.join([hex(ord(i)).replace('0x','') for i in semaphore.key]))
+                            log.debug('Greenlet key: %s', ''.join([hex(ord(i)).replace('0x','') for i in key]))
                         return False
                 semaphore.release()
                 return True
@@ -112,7 +116,6 @@ class UsherServer:
         timeout = min(timeout, 120) # At most tie up for 120 seconds
         key = self.ns.acquire(namespace, expiration + self.LEASE_EXT, timeout)
         if key is None:
-            print 'empty'
             return 0, None
         else:
             return expiration, key
@@ -130,7 +133,7 @@ class UsherServer:
         '''
         Removes a lease from the lease table
         '''
-        return self.ns.release(namespace, key)
+        return int(self.ns.release(namespace, key))
             
 
 
