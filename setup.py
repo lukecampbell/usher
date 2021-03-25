@@ -15,7 +15,7 @@ setup(name = 'usher',
         packages=packages,
         install_requires=[
             'gevent==0.13.8',
-            'PyYAML==5.1'
+            'PyYAML==5.4'
             ],
         entry_points = {
             'console_scripts': [
